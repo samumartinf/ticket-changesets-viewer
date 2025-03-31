@@ -15,6 +15,12 @@ interface Changeset {
     files: string[];
 }
 
+interface SvnInfo {
+    repositoryRoot: string;
+    workingCopyPath: string;
+    relativePrefix: string;
+}
+
 // Create an output channel for logging
 const outputChannel = vscode.window.createOutputChannel('Ticket Changesets');
 
@@ -165,12 +171,15 @@ export function activate(context: vscode.ExtensionContext) {
                                 const revision = message.revision;
                                 outputChannel.appendLine(`Opening diff for revision ${revision} in VS Code diff editor...`);
                                 
+                                // Get SVN info first
+                                const svnInfo = await getSvnInfo(workingDir, svnPath);
+                                
                                 // Get the list of files changed in this revision
                                 const { stdout: fileListOutput } = await execAsync(
                                     `${svnPath} log -v -c ${revision}`,
                                     { 
                                         cwd: workingDir,
-                                        maxBuffer: 1024 * 1024 * 10 // 10MB buffer for diffs
+                                        maxBuffer: 1024 * 1024 * 10
                                     }
                                 );
                                 
@@ -208,27 +217,9 @@ export function activate(context: vscode.ExtensionContext) {
                                 
                                 // Get previous version of the file
                                 try {
-                                    // Fix the file path by removing the leading slash and any duplicate repository folder names
-                                    // If the path starts with /trunk/ and workingDir ends with trunk, we need to adjust
-                                    let adjustedFilePath = selectedFile;
-                                    
-                                    // Log the file path and working directory to help debug
+                                    let adjustedFilePath = adjustFilePath(selectedFile, svnInfo);
                                     outputChannel.appendLine(`Working with file: ${selectedFile}`);
-                                    outputChannel.appendLine(`Working directory: ${workingDir}`);
-                                    
-                                    // Remove the leading slash if it exists
-                                    if (adjustedFilePath.startsWith('/')) {
-                                        adjustedFilePath = adjustedFilePath.substring(1);
-                                    }
-                                    
-                                    // Check if we need to adjust the path based on the working directory
-                                    const workingDirName = path.basename(workingDir);
-                                    if (adjustedFilePath.startsWith(workingDirName + '/')) {
-                                        // If the path starts with the same folder name as the working directory, remove that prefix
-                                        adjustedFilePath = adjustedFilePath.substring(workingDirName.length + 1);
-                                    }
-                                    
-                                    outputChannel.appendLine(`Adjusted file path: ${adjustedFilePath}`);
+                                    outputChannel.appendLine(`Adjusted to: ${adjustedFilePath}`);
                                     
                                     const { stdout: oldContent } = await execAsync(
                                         `${svnPath} cat -r ${prevRevision} "${adjustedFilePath}"`,
@@ -247,20 +238,7 @@ export function activate(context: vscode.ExtensionContext) {
                                 
                                 // Get new version of the file
                                 try {
-                                    // Use the same path adjustment logic as above
-                                    let adjustedFilePath = selectedFile;
-                                    
-                                    // Remove the leading slash if it exists
-                                    if (adjustedFilePath.startsWith('/')) {
-                                        adjustedFilePath = adjustedFilePath.substring(1);
-                                    }
-                                    
-                                    // Check if we need to adjust the path based on the working directory
-                                    const workingDirName = path.basename(workingDir);
-                                    if (adjustedFilePath.startsWith(workingDirName + '/')) {
-                                        // If the path starts with the same folder name as the working directory, remove that prefix
-                                        adjustedFilePath = adjustedFilePath.substring(workingDirName.length + 1);
-                                    }
+                                    let adjustedFilePath = adjustFilePath(selectedFile, svnInfo);
                                     
                                     const { stdout: newContent } = await execAsync(
                                         `${svnPath} cat -r ${revision} "${adjustedFilePath}"`,
@@ -362,16 +340,11 @@ export function activate(context: vscode.ExtensionContext) {
                                 
                                 outputChannel.appendLine(`Creating unified diff for ${selectedFile} from r${lowestRevision} to r${highestRevision}`);
                                 
-                                // Prepare the file path
-                                let adjustedFilePath = selectedFile;
-                                if (adjustedFilePath.startsWith('/')) {
-                                    adjustedFilePath = adjustedFilePath.substring(1);
-                                }
+                                // Get SVN info
+                                const svnInfo = await getSvnInfo(workingDir, svnPath);
                                 
-                                const workingDirName = path.basename(workingDir);
-                                if (adjustedFilePath.startsWith(workingDirName + '/')) {
-                                    adjustedFilePath = adjustedFilePath.substring(workingDirName.length + 1);
-                                }
+                                // Prepare the file path
+                                let adjustedFilePath = adjustFilePath(selectedFile, svnInfo);
                                 
                                 // Create temp files for the diff view
                                 const fileNameOnly = path.basename(adjustedFilePath);
@@ -438,7 +411,7 @@ export function activate(context: vscode.ExtensionContext) {
                     
                 } catch (error) {
                     const errorMessage = error instanceof Error ? error.message : String(error);
-                    outputChannel.appendLine(`Error searching for commits: ${errorMessage}`);
+                    outputChannel.appendLine(`Error searching for commits: ${errorMessage}. These changes might not be available on this branch`);
                     vscode.window.showErrorMessage(`Error searching for commits: ${errorMessage}`);
                 }
             });
@@ -835,6 +808,67 @@ async function generateWebviewContent(
     `;
 
     return html;
+}
+
+async function getSvnInfo(workingDir: string, svnPath: string): Promise<SvnInfo> {
+    try {
+        const { stdout } = await execAsync(`${svnPath} info --xml`, { cwd: workingDir });
+        
+        // Parse XML output
+        const repoRootMatch = stdout.match(/<root>([^<]+)<\/root>/);
+        const wcPathMatch = stdout.match(/<wcroot-abspath>([^<]+)<\/wcroot-abspath>/);
+        const urlMatch = stdout.match(/<url>([^<]+)<\/url>/);
+        
+        if (!repoRootMatch || !wcPathMatch || !urlMatch) {
+            throw new Error('Could not parse SVN info output');
+        }
+        
+        const repositoryRoot = repoRootMatch[1];
+        const workingCopyPath = wcPathMatch[1];
+        const url = urlMatch[1];
+        
+        // Calculate the relative prefix by comparing the URL with the repository root
+        const relativePrefix = url.substring(repositoryRoot.length).replace(/^\/+/, '');
+        
+        outputChannel.appendLine(`Repository root: ${repositoryRoot}`);
+        outputChannel.appendLine(`Working copy path: ${workingCopyPath}`);
+        outputChannel.appendLine(`URL: ${url}`);
+        outputChannel.appendLine(`Relative prefix: ${relativePrefix}`);
+        
+        return { repositoryRoot, workingCopyPath, relativePrefix };
+    } catch (error) {
+        outputChannel.appendLine(`Error getting SVN info: ${error}`);
+        throw error;
+    }
+}
+
+function adjustFilePath(filePath: string, svnInfo: SvnInfo): string {
+    // Remove leading slash if present
+    let adjustedPath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+    
+    // Get the repository structure prefix from the SVN info
+    const relativePrefix = svnInfo.relativePrefix;
+    outputChannel.appendLine(`Repository relative prefix: ${relativePrefix}`);
+    
+    // If the path starts with the exact relative prefix, remove it
+    if (relativePrefix && adjustedPath.startsWith(relativePrefix + '/')) {
+        adjustedPath = adjustedPath.substring(relativePrefix.length + 1);
+        outputChannel.appendLine(`Removed exact prefix: ${adjustedPath}`);
+    } else {
+        // If not an exact match, try to find and remove any repository structure prefix
+        // This handles cases where the file path includes trunk/, branches/, tags/, or custom paths
+        const pathParts = adjustedPath.split('/');
+        const workingCopyParts = relativePrefix.split('/');
+        
+        // If the first part matches any part of the working copy path, remove it
+        if (workingCopyParts.includes(pathParts[0])) {
+            adjustedPath = pathParts.slice(1).join('/');
+            outputChannel.appendLine(`Removed repository prefix '${pathParts[0]}': ${adjustedPath}`);
+        }
+    }
+    
+    outputChannel.appendLine(`Adjusted path from '${filePath}' to '${adjustedPath}'`);
+    return adjustedPath;
 }
 
 export function deactivate() {} 

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background circle -->
+    <circle cx="64" cy="64" r="60" fill="#C80000" opacity="0.1"/>
+    
+    <!-- Ticket shape -->
+    <path d="M32 32h64v64H32z" fill="#C80000" stroke="#C80000" stroke-width="4"/>
+    <path d="M32 48h64M32 64h64M32 80h64" stroke="white" stroke-width="4"/>
+    
+    <!-- Diff arrows -->
+    <path d="M48 40l8-8m0 0l8 8m-8-8v16" stroke="white" stroke-width="4" stroke-linecap="round"/>
+    <path d="M80 88l-8 8m0 0l-8-8m8 8V80" stroke="white" stroke-width="4" stroke-linecap="round"/>
+</svg> 
