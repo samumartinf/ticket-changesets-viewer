@@ -1,0 +1,78 @@
+{
+  "name": "ticket-changesets-viewer",
+  "displayName": "Ticket Changesets Viewer",
+  "description": "View all changesets associated with a ticket in SVN",
+  "version": "0.0.1",
+  "publisher": "samumartinf",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/samumartinf/ticket-changesets-viewer"
+  },
+  "bugs": {
+    "url": "https://github.com/samumartinf/ticket-changesets-viewer/issues"
+  },
+  "homepage": "https://github.com/samumartinf/ticket-changesets-viewer#readme",
+  "engines": {
+    "vscode": "^1.98.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "svn",
+    "subversion",
+    "tickets",
+    "changesets",
+    "diff"
+  ],
+  "icon": "resources/icon.png",
+  "galleryBanner": {
+    "color": "#C80000",
+    "theme": "dark"
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ticket-changesets-viewer.showChanges",
+        "title": "Show Ticket Changesets",
+        "category": "Ticket Viewer"
+      }
+    ],
+    "configuration": {
+      "title": "Ticket Changesets Viewer",
+      "properties": {
+        "ticketChangesetsViewer.svnPath": {
+          "type": "string",
+          "default": "svn",
+          "description": "Path to the SVN executable"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "pnpm run compile && pnpm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "author": "samumartinf",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/vscode": "^1.98.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.8.2"
+  }
+}
